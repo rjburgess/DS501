@@ -409,7 +409,7 @@ shinyServer(function(input, output) {
                         na.translate = FALSE) + # Add na.translate = FALSE
       scale_color_manual(values = c("0" = "red", "1" = "green"),
                          name = "Actual Class") +
-      labs(title = paste(results$title_suffix, ' (Training Set, Seed:', input$_value, ')'),
+      labs(title = paste(results$title_suffix, ' (Training Set, Seed:', input$seed_value, ')'),
            x = 'Age',
            y = 'Estimated Salary') +
       theme_minimal() +
