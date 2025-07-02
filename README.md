@@ -22,6 +22,9 @@ This Data Science App takes the dataset (.csv) at https://www.kaggle.com/dataset
 5.	Help: This documentation. the ui.R file provides a link to this Readme
 
 <h1> Type of Classification:</h1>
+
+![image](https://github.com/user-attachments/assets/f2d327a6-bdb3-4bd7-913d-2fb7517e6958)
+
 <h2> Logistic Regression </h2>
 1.	Logistic Regression --> (https://en.wikipedia.org/wiki/Logistic_regression). Logistic regression is a supervised machine learning algorithm widely used for binary classification tasks. It will predict a categorical dependent variable from a number of independent variables. 
 <br> </br>
