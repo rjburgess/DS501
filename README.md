@@ -66,3 +66,6 @@ R Documentation for the randomForest comment in R - https://www.rdocumentation.o
 Ntree - number of trees grown – This is not a large dataset so let’s assume 10-100
 
 Mtry - number of predictors sampled for spliting at each node. Specifies the number of predictor variables that are randomly sampled as candidates at each split when a decision tree is being grown within the forest. Since out data has age and salary the mtry is either 1 or 2.
+
+References : https://www.udemy.com/course/machinelearning/?srsltid=AfmBOor2kUy218t7T7zdmvP_Gbune3CQ4xZEwL64Dr8Q0kIyhDUOs6qD
+             https://gemini.google.com/app/
