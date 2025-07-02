@@ -1,6 +1,8 @@
-# server.R
+# This is the main server.R file for the app I am building
 
-# Install and load necessary packages
+# I commented these out when I upload to shiny. I was getting an error and I 
+# thought that it was because these are already install on shainy.io
+
 #pkgs <- c("caTools", "class", "ggplot2", "dplyr", "e1071", "rpart", "randomForest")
 #for (pkg in pkgs) {
  # if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -19,96 +21,112 @@ library(randomForest)
 
 shinyServer(function(input, output) {
   
+# function is reactive so I automatically re-executes
+# I store the csv in the same directory as the ui.R and server.R
   dataset <- reactive({
     df <- read.csv("Social_Network_Ads.csv")
-    df_processed <- df[3:5]
-    df_processed$Purchased <- factor(df_processed$Purchased, levels = c(0, 1))
-    colnames(df_processed)[1:2] <- c("Age", "EstimatedSalary")
-    return(df_processed)
+    # I get rid of the first 2 columns (user id and gender)
+    # I guess later I can use gender as a variable if I want
+    new_df <- df[3:5]
+    # I need to make purcharse the category value
+    new_df$Purchased <- factor(new_df$Purchased, levels = c(0, 1))
+    #colnames(new_df)[1:2] <- c("Age", "EstimatedSalary")
+    return(new_df)
   })
   
+  # this code outputs the columns from the Social_Network_Ads above
+  # I comment out the code that I could have used that displays all the columns (id and gender)
+  #dataset1 <- reactive({
+  #  df <- read.csv("Social_Network_Ads.csv")
+  #})
+  
   output$rawDataOutput <- renderTable({
+    #dataset1()
     dataset()
   })
   
+  # this code splits dataset into training and test based on the split_ratio
   split_data <- reactive({
     df <- dataset()
     
+    # set seed for smae results each time
+    
     seed <- as.numeric(input$seed_value)
-    if (is.na(seed)) {
-      seed <- 123
-    }
     set.seed(seed)
     
     split <- sample.split(df$Purchased, SplitRatio = input$split_ratio)
     
-    training_set_orig <- subset(df, split == TRUE)
-    test_set_orig <- subset(df, split == FALSE)
+    training_set_split <- subset(df, split == TRUE)
+    test_set_split <- subset(df, split == FALSE)
     
-    center_params <- colMeans(training_set_orig[, c("Age", "EstimatedSalary")])
-    scale_params <- apply(training_set_orig[, c("Age", "EstimatedSalary")], 2, sd)
+    # find mean for future feature scaling
     
-    training_set_scaled <- training_set_orig
-    training_set_scaled[, c("Age", "EstimatedSalary")] <- scale(training_set_orig[, c("Age", "EstimatedSalary")],
+    center_params <- colMeans(training_set_split[, c("Age", "EstimatedSalary")])
+    
+    # find sd for future feature scaling
+    
+    scale_params <- apply(training_set_split[, c("Age", "EstimatedSalary")], 2, sd)
+    
+    #use the scale funtion for feature scaling
+    
+    training_set_scaled <- training_set_split
+    training_set_scaled[, c("Age", "EstimatedSalary")] <- scale(training_set_split[, c("Age", "EstimatedSalary")],
                                                                 center = center_params,
                                                                 scale = scale_params)
     
-    test_set_scaled <- test_set_orig
-    test_set_scaled[, c("Age", "EstimatedSalary")] <- scale(test_set_orig[, c("Age", "EstimatedSalary")],
+    test_set_scaled <- test_set_split
+    test_set_scaled[, c("Age", "EstimatedSalary")] <- scale(test_set_split[, c("Age", "EstimatedSalary")],
                                                             center = center_params,
                                                             scale = scale_params)
     
-    full_data_for_ranges <- dataset()
-    # MODIFIED: Plotting ranges to match Python code's X_set min/max with +/- 10 and +/- 1000
-    x_range_plot <- c(min(full_data_for_ranges$Age) - 10, max(full_data_for_ranges$Age) + 10)
-    y_range_plot <- c(min(full_data_for_ranges$EstimatedSalary) - 1000, max(full_data_for_ranges$EstimatedSalary) + 1000)
+    # Previously the graphs were plotting the scale features. I needed to so the plot would have the correct ranges of the real input csv data
+    plot_range <- dataset()
+    x_range_plot <- c(min(plot_range$Age) - 10, max(plot_range$Age) + 10)
+    y_range_plot <- c(min(plot_range$EstimatedSalary) - 1000, max(plot_range$EstimatedSalary) + 1000)
     
+    # This create a list of all parameters created so they can be access later if needed
     list(training_set_scaled = training_set_scaled,
          test_set_scaled = test_set_scaled,
-         training_set_orig = training_set_orig,
-         test_set_orig = test_set_orig,
+         training_set_split = training_set_split,
+         test_set_split = test_set_split,
          center_params = center_params,
          scale_params = scale_params,
          x_range_plot = x_range_plot,
          y_range_plot = y_range_plot)
   })
   
-  observeEvent(input$calculate_seed_button, {
-    seed_val <- as.numeric(input$seed_value)
-    if (is.na(seed_val)) {
-      output$calculated_seed_output <- renderText({ "Please enter a valid number for the seed." })
-    } else {
-      result <- seed_val * 5
-      output$calculated_seed_output <- renderText({ paste("Seed value multiplied by 5:", result) })
-    }
-  })
-  
-  observeEvent(input$predict_new_button, {
-    new_age <- input$new_age
-    new_salary <- input$new_salary
+  # this the code to run inference 
+  observeEvent(input$run_inference, {
+    new_age <- input$inf_age
+    new_salary <- input$inf_salary
     
     if (is.na(new_age) || is.na(new_salary) || new_age <= 0 || new_salary < 0) {
-      output$new_prediction_output <- renderText("Please enter valid positive numbers for Age and Estimated Salary.")
+      output$inf_prediction_output <- renderText("Age and Salary must be greater than Zero - Redo")
       return()
     }
     
+    # I need the data sets and the model info to run infernce
     data_sets <- split_data()
-    model_info <- model_results() # Get all model info
+    model_info <- model_results() 
     
-    # Check if a model was successfully built or if it's KNN (which doesn't have a 'model_obj')
+    # For some reason KNN is lazy and does not build a model so I need to call the training data for inferencing, 
     if (is.null(model_info$model_obj) && model_info$algorithm != "KNN") {
-      output$new_prediction_output <- renderText("Please train a model first or select an algorithm where fitting was successful.")
+      output$inf_prediction_output <- renderText("Wait until model is trained before hitting the inference button")
       return()
     }
     
+    # create the dataframe for inferencing 
     new_data_orig_df <- data.frame(Age = new_age, EstimatedSalary = new_salary)
     
+    # do feature scaling on the data like we did in training
     new_data_scaled_df <- new_data_orig_df
     new_data_scaled_df$Age <- (new_data_scaled_df$Age - data_sets$center_params["Age"]) / data_sets$scale_params["Age"]
     new_data_scaled_df$EstimatedSalary <- (new_data_scaled_df$EstimatedSalary - data_sets$center_params["EstimatedSalary"]) / data_sets$scale_params["EstimatedSalary"]
     
-    predicted_class <- NULL
+    #predicted_class <- NULL
     prediction_reliability_msg <- ""
+    
+    # Need to run KNN again
     
     if (model_info$algorithm == "KNN") {
       predicted_class <- knn(train = data_sets$training_set_scaled[, c("Age", "EstimatedSalary")],
@@ -122,37 +140,37 @@ shinyServer(function(input, output) {
       }
       
       if (model_info$algorithm == "LogisticRegression") {
-        # Robustness for Logistic Regression predictions for new data point
-        # Ensure model_info$model_obj is not NULL before predicting
         if (!is.null(model_info$model_obj)) {
           prob <- predict(model_info$model_obj, newdata = new_data_scaled_df[, c("Age", "EstimatedSalary")], type = "response")
-          prob[is.na(prob) | is.infinite(prob)] <- 0.5 # Handle NA/NaN/Inf probabilities
+          prob[is.na(prob) | is.infinite(prob)] <- 0.5 # 
           predicted_class <- factor(ifelse(prob > 0.5, 1, 0), levels = c(0, 1))
-        } else { # This means Logistic Regression failed and lr_model_temp was set to NULL
-          predicted_class <- factor(0, levels = c(0, 1)) # Default to 0
-          prediction_reliability_msg <- " (Warning: Logistic Regression model failed to fit. Defaulting to 'No Purchase'.)"
+        } else { 
+          predicted_class <- factor(0, levels = c(0, 1))
+          prediction_reliability_msg <- "Logistic Regression Failed)"
         }
         
-      } else { # Other algorithms with proper model_obj
+        # this is for everything beside KNN and LR
+      } else { 
         predicted_class_raw <- predict(model_info$model_obj, newdata = new_data_scaled_df, type = "class")
         predicted_class <- factor(as.numeric(as.character(predicted_class_raw)), levels = c(0, 1))
       }
     }
     
     if (!is.null(predicted_class)) {
-      output$new_prediction_output <- renderText({
+      output$inf_prediction_output <- renderText({
         class_text <- if (as.character(predicted_class) == "1") {
           "will PURCHASE the product."
         } else {
           "will NOT PURCHASE the product."
         }
-        paste0("Predicted: User with Age ", new_age, " and Salary ", new_salary, " ", class_text, prediction_reliability_msg)
+        paste0("User Age ", new_age, " and Salary ", new_salary, " ", class_text, prediction_reliability_msg)
       })
     } else {
-      output$new_prediction_output <- renderText("Prediction could not be made. Ensure a model is selected and parameters are valid.")
+      output$inf_prediction_output <- renderText("Prediction Invalid.")
     }
   })
   
+  # this will train the model as inputs are changed
   model_results <- reactive({
     req(input$algorithm_choice)
     data_sets <- split_data()
@@ -161,7 +179,7 @@ shinyServer(function(input, output) {
     
     current_algo <- input$algorithm_choice
     model_obj <- NULL
-    model_status_message <- NULL # To provide feedback on model issues
+    model_status_message <- NULL # I will print this message to the screen for each model
     
     results <- switch(current_algo,
                       "KNN" = {
@@ -172,14 +190,14 @@ shinyServer(function(input, output) {
                                           k = k_val,
                                           prob = TRUE)
                         y_pred <- factor(as.numeric(as.character(y_pred_raw)), levels = c(0, 1))
-                        list(y_pred = y_pred, model_obj = NULL, title_suffix = paste0('K-NN (k=', k_val, ')')) # KNN has no model_obj for predict
+                        list(y_pred = y_pred, model_obj = NULL, title_suffix = paste0('K-NN (k=', k_val, ')')) 
                       },
                       "SVM" = {
                         svm_model <- svm(Purchased ~ Age + EstimatedSalary,
                                          data = training_set_scaled,
                                          kernel = input$svm_kernel,
                                          cost = input$svm_cost,
-                                         gamma = if(input$svm_kernel %in% c("radial", "polynomial", "sigmoid")) input$svm_gamma else 1/ncol(training_set_scaled[, c("Age", "EstimatedSalary")]),
+                                         gamma = if(input$svm_kernel %in% c("radial", "polynomial")) input$svm_gamma else 1/ncol(training_set_scaled[, c("Age", "EstimatedSalary")]),
                                          degree = if(input$svm_kernel == "polynomial") input$svm_degree else 3)
                         y_pred_raw <- predict(svm_model, newdata = test_set_scaled[, c("Age", "EstimatedSalary")])
                         y_pred <- factor(as.numeric(as.character(y_pred_raw)), levels = c(0, 1))
@@ -193,7 +211,7 @@ shinyServer(function(input, output) {
                       },
                       "DecisionTree" = {
                         dt_model <- rpart(Purchased ~ Age + EstimatedSalary, data = training_set_scaled,
-                                          method = "class", control = rpart.control(cp = input$dt_cp))
+                                          method = "class") 
                         y_pred_raw <- predict(dt_model, newdata = test_set_scaled[, c("Age", "EstimatedSalary")], type = "class")
                         y_pred <- factor(as.numeric(as.character(y_pred_raw)), levels = c(0, 1))
                         list(y_pred = y_pred, model_obj = dt_model, title_suffix = paste0('Decision Tree (cp: ', input$dt_cp, ')'))
@@ -207,19 +225,19 @@ shinyServer(function(input, output) {
                         list(y_pred = y_pred, model_obj = rf_model, title_suffix = paste0('Random Forest (Trees: ', input$rf_ntree, ', mtry: ', input$rf_mtry, ')'))
                       },
                       "LogisticRegression" = {
-                        lr_model_temp <- NULL # Temporary holder for glm model
+                        lr_model_temp <- NULL 
                         y_pred_temp <- factor(rep(0, nrow(test_set_scaled)), levels = c(0, 1)) # Default in case of severe error
                         
                         tryCatch({
-                          # Attempt to fit the GLM model
+                          
                           lr_model_temp <- glm(Purchased ~ Age + EstimatedSalary, data = training_set_scaled, family = binomial)
                           
-                          # Check for convergence issues or infinite coefficients (perfect separation)
+                          
                           if (!lr_model_temp$converged) {
                             model_status_message <- "Model did not converge."
                           }
                           if (any(is.infinite(coef(lr_model_temp))) || any(is.na(coef(lr_model_temp)))) {
-                            if (is.null(model_status_message)) { # Only set if no other message
+                            if (is.null(model_status_message)) { 
                               model_status_message <- "Perfect separation detected (infinite coefficients)."
                             } else {
                               model_status_message <- paste(model_status_message, " Perfect separation detected (infinite coefficients).")
@@ -228,18 +246,16 @@ shinyServer(function(input, output) {
                           
                           # Get predictions on the test set
                           prob_pred <- predict(lr_model_temp, newdata = test_set_scaled[, c("Age", "EstimatedSalary")], type = "response")
-                          # Handle any NA/NaN/Inf in probabilities by setting them to 0.5 (will default to class 0)
                           prob_pred[is.na(prob_pred) | is.infinite(prob_pred)] <- 0.5
                           y_pred_temp <- factor(ifelse(prob_pred > 0.5, 1, 0), levels = c(0, 1))
                           
                         }, error = function(e) {
-                          # Catch any fatal errors during glm fitting
                           model_status_message <- paste("Error during fitting:", e$message)
                           lr_model_temp <- NULL # Set model_obj to NULL if fitting completely fails
                         })
                         
                         list(y_pred = y_pred_temp,
-                             model_obj = lr_model_temp, # Pass the model, even if it has problems (unless fatal error)
+                             model_obj = lr_model_temp, 
                              title_suffix = 'Logistic Regression',
                              model_status_message = model_status_message)
                       },
@@ -248,7 +264,7 @@ shinyServer(function(input, output) {
                       }
     )
     
-    # Ensure y_pred only contains 0 or 1 levels for table
+
     cm <- table(test_set_scaled$Purchased, results$y_pred)
     
     list(y_pred = results$y_pred,
@@ -258,6 +274,8 @@ shinyServer(function(input, output) {
          title_suffix = results$title_suffix,
          model_status_message = results$model_status_message) # Pass message out
   })
+  
+  # this is the code for the confusion Matrix
   
   output$confusionMatrixPlot <- renderPlot({
     req(model_results())
@@ -292,22 +310,18 @@ shinyServer(function(input, output) {
     if (!is.null(results$model_status_message)) {
       paste("Model Status:", results$model_status_message)
     } else {
-      "" # No message if model is fine
+      "FIND ISSUE WHY no message" 
     }
   })
   
-  
+  # This is the code to print out the Training Set / Test Cut / and Conf Matrix
   generate_plot_data <- function(plot_set_orig, training_set_scaled, center_params, scale_params,
                                  full_data_orig_x_range, full_data_orig_y_range,
                                  algorithm_type, model_object, k_val_knn) {
     
-    # MODIFIED: Step sizes for grid to match Python code's request.
-    # Note: Python's step=0.25 for EstimatedSalary range (e.g., 100000) creates
-    # an extremely dense grid (millions of points) which is computationally
-    # expensive and can crash R Shiny. A practical step of 100 for Estimated Salary
-    # is used to keep the app responsive, but Age's 0.25 is matched.
-    X1_range_orig <- seq(full_data_orig_x_range[1], full_data_orig_x_range[2], by = 0.25) # Matched Python's 0.25
-    X2_range_orig <- seq(full_data_orig_y_range[1], full_data_orig_y_range[2], by = 100)  # Practical step for Salary
+
+    X1_range_orig <- seq(full_data_orig_x_range[1], full_data_orig_x_range[2], by = 0.25) 
+    X2_range_orig <- seq(full_data_orig_y_range[1], full_data_orig_y_range[2], by = 100) 
     
     grid_set_orig <- expand.grid(Age = X1_range_orig, EstimatedSalary = X2_range_orig)
     
@@ -321,37 +335,35 @@ shinyServer(function(input, output) {
                                        test = grid_set_scaled,
                                        cl = training_set_scaled$Purchased,
                                        k = k_val_knn)
-                       factor(as.numeric(as.character(knn_pred)), levels = c(0, 1)) # Explicitly convert to 0/1 factor
+                       factor(as.numeric(as.character(knn_pred)), levels = c(0, 1)) 
                      },
                      "SVM" = {
                        svm_pred <- predict(model_object, newdata = grid_set_scaled)
-                       factor(as.numeric(as.character(svm_pred)), levels = c(0, 1)) # Explicitly convert to 0/1 factor
+                       factor(as.numeric(as.character(svm_pred)), levels = c(0, 1)) 
                      },
                      "NaiveBayes" = {
                        nb_pred <- predict(model_object, newdata = grid_set_scaled, type = "class")
-                       factor(as.numeric(as.character(nb_pred)), levels = c(0, 1)) # Explicitly convert to 0/1 factor
+                       factor(as.numeric(as.character(nb_pred)), levels = c(0, 1)) 
                      },
                      "DecisionTree" = {
                        dt_pred <- predict(model_object, newdata = grid_set_scaled, type = "class")
-                       factor(as.numeric(as.character(dt_pred)), levels = c(0, 1)) # Explicitly convert to 0/1 factor
+                       factor(as.numeric(as.character(dt_pred)), levels = c(0, 1)) 
                      },
                      "RandomForest" = {
                        rf_pred <- predict(model_object, newdata = grid_set_scaled, type = "class")
-                       factor(as.numeric(as.character(rf_pred)), levels = c(0, 1)) # Explicitly convert to 0/1 factor
+                       factor(as.numeric(as.character(rf_pred)), levels = c(0, 1)) 
                      },
                      "LogisticRegression" = {
-                       if (is.null(model_object)) { # If model fitting failed completely (e.g., error in glm)
-                         factor(rep(0, nrow(grid_set_scaled)), levels = c(0,1)) # Default all red
+                       if (is.null(model_object)) { 
+                         factor(rep(0, nrow(grid_set_scaled)), levels = c(0,1)) 
                        } else {
                          prob_grid <- predict(model_object, newdata = grid_set_scaled, type = "response")
                          
-                         # Visualization hack for Logistic Regression with perfect separation:
-                         # If probabilities are pushed to extreme 0 or 1, slightly clamp them
-                         # to allow a visual boundary to appear on the plot.
+
                          prob_grid[prob_grid < 1e-6] <- 1e-6
                          prob_grid[prob_grid > (1 - 1e-6)] <- 1 - 1e-6
                          
-                         # Ensure no NAs/Infs remain after clamping
+
                          prob_grid[is.na(prob_grid) | is.infinite(prob_grid)] <- 0.5
                          factor(ifelse(prob_grid > 0.5, 1, 0), levels = c(0, 1))
                        }
@@ -361,7 +373,7 @@ shinyServer(function(input, output) {
                      }
     )
     
-    # FINAL FIX: Directly assign y_grid as it is already a factor with levels 0 and 1
+
     grid_set_orig$Prediction <- y_grid
     
     original_points <- plot_set_orig
@@ -375,7 +387,7 @@ shinyServer(function(input, output) {
     results <- model_results()
     data_sets <- split_data()
     
-    plot_data <- generate_plot_data(plot_set_orig = data_sets$training_set_orig,
+    plot_data <- generate_plot_data(plot_set_orig = data_sets$training_set_split,
                                     training_set_scaled = data_sets$training_set_scaled,
                                     center_params = data_sets$center_params,
                                     scale_params = data_sets$scale_params,
@@ -397,7 +409,7 @@ shinyServer(function(input, output) {
                         na.translate = FALSE) + # Add na.translate = FALSE
       scale_color_manual(values = c("0" = "red", "1" = "green"),
                          name = "Actual Class") +
-      labs(title = paste(results$title_suffix, ' (Training Set, Seed:', input$seed_value, ')'),
+      labs(title = paste(results$title_suffix, ' (Training Set, Seed:', input$_value, ')'),
            x = 'Age',
            y = 'Estimated Salary') +
       theme_minimal() +
@@ -409,7 +421,7 @@ shinyServer(function(input, output) {
     results <- model_results()
     data_sets <- split_data()
     
-    plot_data <- generate_plot_data(plot_set_orig = data_sets$test_set_orig,
+    plot_data <- generate_plot_data(plot_set_orig = data_sets$test_set_split,
                                     training_set_scaled = data_sets$training_set_scaled,
                                     center_params = data_sets$center_params,
                                     scale_params = data_sets$scale_params,
