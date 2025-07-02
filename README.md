@@ -19,7 +19,7 @@ This Data Science App takes the dataset (.csv) at https://www.kaggle.com/dataset
    
 4.	Raw Data. This is the Social Network Ads.csv file
   
-5.	Help: This documentation. This documentation is written in html and read into the ui.R using includeHTML
+5.	Help: This documentation. the ui.R file provides a link to this Readme
 
 <h1> Type of Classification:</h1>
 <h2> Logistic Regression </h2>
