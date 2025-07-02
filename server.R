@@ -310,7 +310,7 @@ shinyServer(function(input, output) {
     if (!is.null(results$model_status_message)) {
       paste("Model Status:", results$model_status_message)
     } else {
-      "FIND ISSUE WHY no message" 
+      "" 
     }
   })
   
